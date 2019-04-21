@@ -1,7 +1,9 @@
 package code;
 
+import borderless.BorderlessScene;
 import com.github.sarxos.webcam.Webcam;
 import com.github.sarxos.webcam.WebcamResolution;
+import helper.Config;
 import helper.HelperMethods;
 import helper.MessageBox;
 import javafx.application.Application;
@@ -10,6 +12,7 @@ import javafx.beans.value.ChangeListener;
 import javafx.beans.value.ObservableValue;
 import javafx.concurrent.Worker;
 import javafx.embed.swing.SwingFXUtils;
+import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
@@ -22,8 +25,10 @@ import javafx.scene.text.Text;
 import javafx.scene.web.WebEngine;
 import javafx.scene.web.WebView;
 import javafx.stage.Stage;
+import javafx.stage.StageStyle;
 
 import java.awt.image.BufferedImage;
+import java.io.File;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
@@ -31,21 +36,26 @@ import java.net.URL;
 
 public class Main extends Application {
 
-    TextField url, token, refreshField;
-    RadioButton rdoTV, rdoTotem;
+    TextField url, width, height;
+    PasswordField token;
+    Button back;
+    BorderlessScene sc;
+    BorderPane video, pane, glass;
     Stage stage;
-    Scene scene2;
     WebEngine webEngine;
     BufferedImage capturedImage;
     Webcam webcam;
     ImageView camfeed;
     Image image;
     StackPane visualizador;
-    Boolean isRunning = false, isCamRecording= false;
+    Boolean isRunning = false, isCamRecording= false, isMeasuring=true;
     VBox paneWeb;
     HttpURLConnection http;
     URL urlS;
-    String oldValue = "";
+    String oldValue = "", uText="", tText="";
+    Double wP = 400.0, hP=400.0;
+    Config config = new Config();
+    CheckBox checkBox;
 
     @Override
     public void start(Stage primarystage) throws Exception {
@@ -62,7 +72,7 @@ public class Main extends Application {
 
         Label lblUrl = new Label("URL:");
         lblUrl.setPrefWidth(100);
-        url = new TextField();
+        url = new TextField(uText);
         url.setPrefColumnCount(15);
         url.setPromptText("URL a ingresar aqui");
 
@@ -71,30 +81,41 @@ public class Main extends Application {
 
         Label lblToken = new Label("Token:");
         lblToken.setPrefWidth(100);
-        token = new TextField();
+        token = new PasswordField();
+        token.setText(tText);
         token.setPrefColumnCount(10);
         token.setPromptText("Token de autenticacion aqui");
 
         HBox paneToken = new HBox(lblToken, token);
         paneToken.setSpacing(10);
 
-        Label lblScreen = new Label("Tipo de Display:");
-        rdoTV = new RadioButton("TV");
-        rdoTotem = new RadioButton("Totem");
-        rdoTV.setSelected(true);
-        ToggleGroup screenSize = new ToggleGroup();
-        rdoTV.setToggleGroup(screenSize);
-        rdoTotem.setToggleGroup(screenSize);
 
-        HBox paneTamaño = new HBox(lblScreen, rdoTV, rdoTotem);
+        Label lblTamaño = new Label("Medidas:");
+        lblTamaño.setPrefWidth(50);
+        width = new TextField();
+        width.setPrefColumnCount(10);
+        height = new TextField();
+        height.setPrefColumnCount(10);
+        HBox paneTamaño = new HBox(lblTamaño, width, height);
         paneTamaño.setSpacing(10);
+
+        Label lblRecuerda = new Label("Guardar datos?");
+        checkBox = new CheckBox();
+        HBox paneGuarda = new HBox(10, lblRecuerda, checkBox);
 
 
         Button requestButton = new Button();
         requestButton.setText("Send Request");
         requestButton.setOnAction(e -> sendRequest());
 
-        HBox paneButton = new HBox(requestButton);
+        Button cancelButton = new Button();
+        cancelButton.setText("Cancelar");
+        cancelButton.setOnAction(e -> cancelButton_Click());
+
+        Region buttonSpace = new Region();
+        buttonSpace.setPrefWidth(250);
+
+        HBox paneButton = new HBox(10, requestButton, buttonSpace, cancelButton);
 
 
         //Creacion de los elementos de la segunda escena
@@ -128,6 +149,8 @@ public class Main extends Application {
         paneWeb = new VBox(webView);
         paneWeb.setVgrow(webView, Priority.ALWAYS);
         webView.contextMenuEnabledProperty();
+
+
         //Creacion elementos a usar en capa Camara Web
         HBox cam = new HBox();
         cam.setAlignment(Pos.CENTER);
@@ -146,7 +169,7 @@ public class Main extends Application {
         bottom.setPrefHeight(120);
         bottom.setBackground(new Background(new BackgroundFill(Color.TRANSPARENT, null, null)));
 
-        BorderPane video = new BorderPane();
+        video = new BorderPane();
         video.setLeft(left);
         video.setBottom(bottom);
         video.setCenter(cam);
@@ -155,32 +178,65 @@ public class Main extends Application {
         webcam = Webcam.getDefault();
         webcam.setViewSize(WebcamResolution.VGA.getSize());
 
-        Label refresh = new Label("Refresh:");
-        refreshField = new TextField();
-        refreshField.setPrefColumnCount(5);
-        HBox refreshpane = new HBox(10,refresh, refreshField);
+        glass = new BorderPane();
+        back = new Button("Back");
+        back.setAlignment(Pos.TOP_LEFT);
+        back.setOnAction(e -> back_click());
+        glass.setTop(back);
 
 
-        VBox paneRequest = new VBox(10, paneUrl, paneToken, paneTamaño, refreshpane);
+        visualizador = new StackPane(paneWeb, video, glass);
+        
 
-        BorderPane pane = new BorderPane();
+
+
+        VBox paneRequest = new VBox(10, paneUrl, paneToken, paneTamaño, paneGuarda);
+
+        pane = new BorderPane();
+        pane.setPrefWidth(wP);
+        pane.setPrefHeight(hP);
         pane.setTop(textHeader);
         pane.setCenter(paneRequest);
         pane.setBottom(paneButton);
+        pane.setPadding(new Insets(10));
 
-        visualizador = new StackPane(paneWeb, video);
-
-        Scene scene = new Scene(pane);
-        primarystage.setScene(scene);
+        sc = new BorderlessScene(primarystage, pane);
+        //Scene scene = new Scene(pane);
+        primarystage.setScene(sc);
+        sc.setMoveControl(textHeader);
         primarystage.setTitle("CSSTI | Visualizador");
-        primarystage.show();
         primarystage.setOnCloseRequest(e -> {
             e.consume();
             btnClose_Click();
         });
+        primarystage.setOnShowing(windowEvent -> {
+            measuresUpdate();
+        });
+        pane.sceneProperty().addListener((observableValue, oldScene, newScene) -> {
+            if (newScene == null){
+                isMeasuring = false;
+            }
+            else {
+                measuresUpdate();
+            }
+        });
+        primarystage.show();
     }
+
+    @Override
+    public void init() throws Exception {
+        super.init();
+        File file = new File("config.ini");
+        if (file.exists()){
+            uText = config.readProperties("URL");
+            tText = config.readProperties("Token");
+            wP = Double.valueOf(config.readProperties("Width"));
+            hP = Double.valueOf(config.readProperties("Height"));
+        }
+        System.out.println("CONFIG: "+file.exists());
+    }
+
     public void sendRequest() {
-        int width=0, height=0;
         String URLText = "";
         String errorMessage = "";
         if (url.getText().equals(""))
@@ -189,22 +245,16 @@ public class Main extends Application {
             errorMessage += "Token es un campo requerido\n";
         if (!url.getText().equals("") && !token.getText().equals("")){
             if(HelperMethods.isMatch(url.getText())) {
-                URLText += url.getText() + token.getText();
+                URLText += url.getText()+token.getText();
+                //URLText = insertToken(url.getText(), token.getText());
                 System.out.println("URLText: " + URLText);
-                if (rdoTV.isSelected()) {
-                    width = 960;
-                    height = 600;
-                }
-                if (rdoTotem.isSelected()) {
-                    width = 960;
-                    height = 600;
-
+                if (checkBox.isSelected()){
+                    saveProperties(url.getText(), token.getText(), sc.getWidth(), sc.getHeight());
                 }
                 webEngine.load(URLText);
                 webcam.open();
-                scene2 = new Scene(visualizador, width, height);
-                stage.setScene(scene2);
-                stage.centerOnScreen();
+                sc.setContent(visualizador);
+                sc.setMoveControl(glass);
                 try {
                     urlS = new URL(URLText);
                 } catch (MalformedURLException e) {
@@ -217,6 +267,24 @@ public class Main extends Application {
             MessageBox.show(errorMessage,"Datos Faltantes");
         }
     }
+    public void saveProperties(String url, String token, Double width, Double height){
+        config.saveProperty("URL", url);
+        config.saveProperty("Token", token);
+        if (width != null && height != null){
+            config.saveProperty("Width", width.toString());
+            config.saveProperty("Height", height.toString());
+        }
+    }
+
+    public String insertToken(String base, String tkn){
+        return (base.substring(0, base.indexOf('*'))+tkn+base.substring(base.lastIndexOf('*')+1));
+    }
+
+    public void cancelButton_Click() {
+        isMeasuring = false;
+        stage.close();
+    }
+
     public void btnClose_Click() {
         if (isRunning) {
             isRunning = false;
@@ -225,6 +293,35 @@ public class Main extends Application {
             isCamRecording = false;
         }
         stage.close();
+    }
+
+    public void measuresUpdate() {
+        Runnable mUpdate = () -> measure();
+        Thread measuresBackground = new Thread(mUpdate);
+        measuresBackground.setDaemon(true);
+        measuresBackground.start();
+    }
+
+    public void measure() {
+        while (isMeasuring){
+            Platform.runLater(() -> {
+                width.setText(String.valueOf(pane.getWidth()));
+                height.setText(String.valueOf(pane.getHeight()));
+            });
+            try {
+                Thread.sleep(100);
+            }catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public void back_click() {
+        webcam.close();
+        isRunning = false;
+        isCamRecording = false;
+        sc.setContent(pane);
+        isMeasuring = true;
     }
 
     public void initFetch() {
@@ -250,7 +347,6 @@ public class Main extends Application {
                     System.out.println("Changed");
                     Platform.runLater(() -> webEngine.reload());
                 }
-                //int refresh = (Integer) refreshField.getText().;
                 Thread.sleep(15000);
             } catch (IOException e) {
                 e.printStackTrace();
